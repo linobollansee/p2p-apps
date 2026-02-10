@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>P2P Text Chat</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 1000px; margin: 0 auto; padding: 20px; background: #f5f5f5; }
+  
+  .container { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; height: calc(100vh - 40px); }
+  
+  .panel { background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); display: flex; flex-direction: column; overflow: hidden; }
+  
+  .panel h2 { margin: 0; padding: 15px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; font-size: 16px; }
+  
+  .content { flex: 1; display: flex; flex-direction: column; padding: 15px; gap: 15px; overflow: hidden; }
+  
+  label { display: block; font-weight: 600; margin-bottom: 8px; color: #333; font-size: 12px; }
+  
+  textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 12px; resize: none; }
+  
+  .offer-textarea { height: 80px; }
+  .answer-textarea { height: 80px; }
+  
+  .button-group { display: flex; gap: 8px; flex-wrap: wrap; }
+  
+  button { padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; transition: all 0.3s; font-size: 13px; }
+  
+  button:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+  
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  
+  .btn-primary { background: #667eea; color: white; }
+  .btn-primary:hover:not(:disabled) { background: #5568d3; }
+  
+  .btn-secondary { background: #48bb78; color: white; }
+  .btn-secondary:hover:not(:disabled) { background: #38a169; }
+  
+  .btn-danger { background: #f56565; color: white; }
+  .btn-danger:hover:not(:disabled) { background: #e53e3e; }
+  
+  .btn-copy { background: #4299e1; color: white; font-size: 12px; padding: 8px 12px; }
+  .btn-copy:hover:not(:disabled) { background: #3182ce; }
+  
+  .status { padding: 12px; border-radius: 4px; text-align: center; font-weight: 600; }
+  .status.disconnected { background: #fed7d7; color: #c53030; }
+  .status.connecting { background: #feebc8; color: #c05621; }
+  .status.connected { background: #c6f6d5; color: #22543d; }
+  
+  .chat-area { flex: 1; display: flex; flex-direction: column; }
+  
+  .messages { flex: 1; overflow-y: auto; background: #f9f9f9; padding: 15px; border-radius: 4px; margin-bottom: 10px; }
+  
+  .message { margin-bottom: 12px; padding: 10px 12px; border-radius: 4px; max-width: 85%; word-wrap: break-word; }
+  
+  .message.local { align-self: flex-end; background: #667eea; color: white; margin-left: auto; }
+  .message.remote { align-self: flex-start; background: #e2e8f0; color: #2d3748; }
+  
+  .message-time { font-size: 11px; opacity: 0.7; margin-top: 4px; }
+  
+  .input-group { display: flex; gap: 8px; }
+  
+  input[type="text"] { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
+  
+  input[type="text"]:focus { outline: none; border-color: #667eea; box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1); }
+  
+  .info-text { font-size: 12px; color: #666; text-align: center; margin: 10px 0; }
+  
+  .divider { height: 1px; background: #e2e8f0; margin: 10px 0; }
+  
+  @media (max-width: 768px) {
+    .container { grid-template-columns: 1fr; }
+    .message { max-width: 100%; }
+  }
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
+</head>
+<body>
+
+<div class="container">
+  <!-- Left Panel: Signaling -->
+  <div class="panel">
+    <h2>🔗 Signaling</h2>
+    <div class="content">
+      <div class="signaling-section">
+        <label>Your Code (Copy & Share):</label>
+        <textarea id="signalOutput" readonly placeholder="Your signaling code will appear here after creating connection..."></textarea>
+        <button class="btn-copy" id="copySignal">Copy to Clipboard</button>
+      </div>
+      
+      <div class="divider"></div>
+      
+      <div class="signaling-section">
+        <label>Paste Code from Partner:</label>
+        <textarea id="signalInput" placeholder="Paste the code from the other person here..."></textarea>
+      </div>
+      
+      <div class="divider"></div>
+      
+      <div id="status" class="status disconnected">Status: Disconnected</div>
+      
+      <div class="button-group">
+        <button id="createOffer" class="btn-primary">Create & Wait</button>
+        <button id="createAnswer" class="btn-secondary">Receive & Connect</button>
+        <button id="disconnect" class="btn-danger" disabled>Disconnect</button>
+      </div>
+      
+      <div class="info-text">
+        <strong>How it works:</strong><br>
+        1. Person A clicks "Create & Wait"<br>
+        2. Share your code to Person B<br>
+        3. Person B pastes code and clicks "Receive & Connect"<br>
+        4. Start chatting!
+      </div>
+    </div>
+  </div>
+  
+  <!-- Right Panel: Chat -->
+  <div class="panel">
+    <h2>💬 Chat</h2>
+    <div class="content">
+      <div class="chat-area">
+        <div class="messages" id="messages"></div>
+        <div class="input-group">
+          <input type="text" id="messageInput" placeholder="Type a message..." disabled maxlength="2000">
+          <button id="sendBtn" class="btn-primary" disabled>Send</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let pc;
+let dataChannel;
+let isInitiator = false;
+let messageTimestamps = []; // For rate limiting
+
+const statusEl = document.getElementById('status');
+const messagesEl = document.getElementById('messages');
+const messageInput = document.getElementById('messageInput');
+const sendBtn = document.getElementById('sendBtn');
+
+function log(msg) {
+  console.log(`[P2P Chat] ${msg}`);
+}
+
+function updateStatus(text, type) {
+  statusEl.textContent = `Status: ${text}`;
+  statusEl.className = `status ${type}`;
+}
+
+function addMessage(text, type) {
+  const div = document.createElement('div');
+  div.className = `message ${type}`;
+  
+  const time = new Date().toLocaleTimeString();
+  const msgSpan = document.createElement('span');
+  msgSpan.textContent = text; // ✅ XSS-safe: using textContent instead of innerHTML
+  div.appendChild(msgSpan);
+  
+  const timeEl = document.createElement('div');
+  timeEl.className = 'message-time';
+  timeEl.textContent = time;
+  div.appendChild(timeEl);
+  
+  messagesEl.appendChild(div);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+function enableChat() {
+  messageInput.disabled = false;
+  sendBtn.disabled = false;
+}
+
+function disableChat() {
+  messageInput.disabled = true;
+  sendBtn.disabled = true;
+  messageInput.value = '';
+}
+
+function setupDataChannel(channel) {
+  dataChannel = channel;
+  
+  dataChannel.onopen = () => {
+    log('Data channel opened');
+    updateStatus('Connected', 'connected');
+    enableChat();
+    addMessage('Connected to peer!', 'local');
+  };
+  
+  dataChannel.onmessage = (event) => {
+    log(`Received: ${event.data}`);
+    addMessage(event.data, 'remote');
+  };
+  
+  dataChannel.onclose = () => {
+    log('Data channel closed');
+    updateStatus('Disconnected', 'disconnected');
+    disableChat();
+    dataChannel = null;
+  };
+  
+  dataChannel.onerror = (error) => {
+    log(`Channel error: ${error.message}`);
+  };
+}
+
+async function initConnection() {
+  try {
+    pc = new RTCPeerConnection({
+      iceServers: [
+        {urls: 'stun:stun.l.google.com:19302'},
+        {urls: 'stun:stun1.l.google.com:19302'},
+        {urls: 'stun:stun2.l.google.com:19302'},
+        {urls: 'stun:stun3.l.google.com:19302'},
+        {urls: 'stun:stun4.l.google.com:19302'}
+      ]
+    });
+    
+    pc.onconnectionstatechange = () => {
+      log(`Connection state: ${pc.connectionState}`);
+      if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+        updateStatus('Disconnected', 'disconnected');
+        disableChat();
+      }
+    };
+    
+    pc.ondatachannel = (event) => {
+      log('Received data channel');
+      setupDataChannel(event.channel);
+    };
+    
+    pc.onicecandidate = (event) => {
+      if (event.candidate) return;
+      
+      const compressed = LZString.compressToBase64(JSON.stringify(pc.localDescription));
+      document.getElementById('signalOutput').value = compressed;
+      log('Signaling code ready');
+    };
+    
+    return true;
+  } catch (error) {
+    log(`Connection error: ${error.message}`);
+    alert('Connection failed. Please try again.');
+    return false;
+  }
+}
+
+// Create Offer (Person A)
+document.getElementById('createOffer').onclick = async () => {
+  if (pc) {
+    alert('Connection already exists. Disconnect first.');
+    return;
+  }
+  
+  if (!await initConnection()) return;
+  
+  try {
+    isInitiator = true;
+    
+    // Create data channel
+    dataChannel = pc.createDataChannel('chat', {
+      ordered: true
+    });
+    setupDataChannel(dataChannel);
+    
+    // Create offer
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    
+    updateStatus('Waiting for partner...', 'connecting');
+    log('Offer created');
+    
+  } catch (error) {
+    log(`Error creating offer: ${error.message}`);
+    alert('Failed to create offer. Please try again.');
+  }
+};
+
+// Create Answer (Person B)
+document.getElementById('createAnswer').onclick = async () => {
+  if (pc) {
+    alert('Connection already exists. Disconnect first.');
+    return;
+  }
+  
+  const code = document.getElementById('signalInput').value;
+  if (!code) {
+    alert('Paste the offer code first!');
+    return;
+  }
+  
+  if (!await initConnection()) return;
+  
+  try {
+    isInitiator = false;
+    
+    // Parse and set remote offer
+    const offer = JSON.parse(LZString.decompressFromBase64(code));
+    await pc.setRemoteDescription(offer);
+    
+    // Create and set answer
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    
+    updateStatus('Processing connection...', 'connecting');
+    log('Answer created');
+    
+  } catch (error) {
+    log(`Error processing offer: ${error.message}`);
+    alert('Invalid code or connection error. Please try again.');
+  }
+};
+
+// Process answer (for Person A after Person B connects)
+document.getElementById('signalInput').addEventListener('change', async () => {
+  if (!pc || !isInitiator || pc.remoteDescription) return;
+  
+  const code = document.getElementById('signalInput').value;
+  if (!code) return;
+  
+  try {
+    const answer = JSON.parse(LZString.decompressFromBase64(code));
+    await pc.setRemoteDescription(answer);
+    log('Answer processed');
+  } catch (error) {
+    log(`Error processing answer: ${error.message}`);
+  }
+});
+
+// Send message
+function sendMessage() {
+  const rawText = messageInput.value.trim();
+  if (!rawText) return;
+  
+  // Rate limiting: max 10 messages per second
+  const now = Date.now();
+  messageTimestamps = messageTimestamps.filter(t => now - t < 1000);
+  if (messageTimestamps.length >= 10) {
+    alert('Message rate limited. Please wait.');
+    return;
+  }
+  messageTimestamps.push(now);
+  
+  if (!dataChannel || dataChannel.readyState !== 'open') {
+    alert('Not connected');
+    return;
+  }
+  
+  // Sanitize: trim and limit length (enforced by maxlength but double-check)
+  const text = rawText.substring(0, 2000);
+  
+  dataChannel.send(text);
+  addMessage(text, 'local');
+  messageInput.value = '';
+  messageInput.focus();
+}
+
+sendBtn.onclick = sendMessage;
+messageInput.onkeypress = (e) => {
+  if (e.key === 'Enter') sendMessage();
+};
+
+// Copy signal code
+document.getElementById('copySignal').onclick = async () => {
+  const code = document.getElementById('signalOutput').value;
+  if (!code) {
+    alert('Create a connection first!');
+    return;
+  }
+  await navigator.clipboard.writeText(code);
+  alert('Code copied to clipboard!');
+};
+
+// Disconnect
+document.getElementById('disconnect').onclick = () => {
+  if (pc) {
+    pc.close();
+    pc = null;
+  }
+  if (dataChannel) {
+    dataChannel.close();
+    dataChannel = null;
+  }
+  
+  messageTimestamps = []; // Reset rate limiter
+  
+  updateStatus('Disconnected', 'disconnected');
+  disableChat();
+  document.getElementById('signalOutput').value = '';
+  document.getElementById('signalInput').value = '';
+  document.getElementById('disconnect').disabled = true;
+  document.getElementById('createOffer').disabled = false;
+  document.getElementById('createAnswer').disabled = false;
+  
+  messagesEl.innerHTML = '';
+  isInitiator = false;
+  
+  log('Disconnected');
+};
+
+// Cleanup on unload
+window.addEventListener('beforeunload', () => {
+  if (pc) pc.close();
+  if (dataChannel) dataChannel.close();
+});
+
+log('P2P Text Chat initialized');
+</script>
+</body>
+</html>

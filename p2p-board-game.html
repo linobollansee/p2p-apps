@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>P2P Board Game (Compressed Signal)</title>
+<style>
+  textarea { width: 100%; height: 80px; margin-bottom: 5px; }
+  button { margin: 2px; }
+  #log { border: 1px solid #ccc; padding: 10px; height: 150px; overflow-y: auto; }
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
+</head>
+<body>
+
+<h2>P2P Board Game (Compressed Signal)</h2>
+
+<div>
+  <button id="createOffer">Create Offer</button>
+  <button id="createAnswer">Create Answer</button>
+</div>
+
+<h3>Signaling</h3>
+<label>Paste code from other player:</label>
+<textarea id="signalInput" placeholder="Paste code here"></textarea>
+<label>Copy this code to share:</label>
+<textarea id="signalOutput" placeholder="Copy this code" readonly></textarea>
+<button id="copySignal">Copy to Clipboard</button>
+
+<hr>
+
+<h3>Game Moves</h3>
+<input id="moveInput" placeholder="Enter move" />
+<button id="sendMove">Send Move</button>
+<div id="log"></div>
+
+<script>
+let pc;
+let dataChannel;
+
+// Logging utility
+function log(msg) {
+  const logEl = document.getElementById('log');
+  logEl.innerHTML += msg + '<br>';
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+// Initialize PeerConnection
+function initConnection() {
+  pc = new RTCPeerConnection({
+    iceServers: [
+      {urls: 'stun:stun.l.google.com:19302'},
+      {urls: 'stun:stun1.l.google.com:19302'}
+    ]
+  });
+
+  // Receive data channel
+  pc.ondatachannel = event => {
+    dataChannel = event.channel;
+    setupDataChannel();
+  };
+
+  // ICE candidates gathered → compress SDP
+  pc.onicecandidate = event => {
+    if (event.candidate) return;
+    const compressed = LZString.compressToBase64(JSON.stringify(pc.localDescription));
+    document.getElementById('signalOutput').value = compressed;
+  };
+}
+
+// Setup data channel
+function setupDataChannel() {
+  dataChannel.onopen = () => log('Data channel open!');
+  dataChannel.onmessage = e => log('Opponent move: ' + e.data);
+}
+
+// Create Offer (Player A)
+document.getElementById('createOffer').onclick = async () => {
+  initConnection();
+  dataChannel = pc.createDataChannel('game');
+  setupDataChannel();
+
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+};
+
+// Create Answer (Player B)
+document.getElementById('createAnswer').onclick = async () => {
+  initConnection();
+
+  const code = document.getElementById('signalInput').value;
+  if (!code) return alert('Paste the offer code first!');
+  const offer = JSON.parse(LZString.decompressFromBase64(code));
+
+  await pc.setRemoteDescription(offer);
+  const answer = await pc.createAnswer();
+  await pc.setLocalDescription(answer);
+
+  document.getElementById('signalOutput').value = LZString.compressToBase64(JSON.stringify(pc.localDescription));
+};
+
+// Final step for Player A: paste answer code
+document.getElementById('signalInput').addEventListener('change', async () => {
+  if (!pc) return;
+  const code = document.getElementById('signalInput').value;
+  if (!code) return;
+  const answer = JSON.parse(LZString.decompressFromBase64(code));
+  await pc.setRemoteDescription(answer);
+});
+
+// Send a move
+document.getElementById('sendMove').onclick = () => {
+  const move = document.getElementById('moveInput').value;
+  if (dataChannel && dataChannel.readyState === 'open') {
+    dataChannel.send(move);
+    log('Your move: ' + move);
+    document.getElementById('moveInput').value = '';
+  } else {
+    alert('Data channel not open yet!');
+  }
+};
+
+// Copy signaling code to clipboard
+document.getElementById('copySignal').onclick = async () => {
+  const code = document.getElementById('signalOutput').value;
+  if (!code) return alert('No code to copy!');
+  await navigator.clipboard.writeText(code);
+  alert('Signaling code copied!');
+};
+</script>
+</body>
+</html>

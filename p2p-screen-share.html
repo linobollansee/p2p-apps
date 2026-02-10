@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>P2P Screen Share</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 1400px; margin: 0 auto; padding: 20px; background: #1a1a1a; color: #fff; }
+  
+  .header { text-align: center; margin-bottom: 30px; }
+  .header h1 { margin: 0 0 10px 0; color: #fff; }
+  
+  .container { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; min-height: calc(100vh - 200px); }
+  
+  .panel { background: #2d2d2d; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.3); overflow: hidden; display: flex; flex-direction: column; }
+  
+  .panel-header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 15px 20px; font-weight: 600; }
+  
+  .panel-content { padding: 20px; flex: 1; display: flex; flex-direction: column; }
+  
+  .video-container { flex: 1; background: #000; border-radius: 4px; overflow: hidden; display: flex; align-items: center; justify-content: center; position: relative; }
+  
+  video { max-width: 100%; max-height: 100%; width: auto; height: auto; }
+  
+  .no-video { color: #888; text-align: center; }
+  
+  label { display: block; font-weight: 600; margin: 15px 0 8px 0; color: #ddd; font-size: 13px; }
+  
+  textarea { width: 100%; padding: 10px; border: 1px solid #444; border-radius: 4px; font-family: monospace; font-size: 12px; resize: none; height: 70px; background: #1a1a1a; color: #ddd; }
+  
+  textarea:focus { outline: none; border-color: #667eea; }
+  
+  button { padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; transition: all 0.3s; font-size: 13px; margin: 5px 5px 5px 0; }
+  
+  button:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+  
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  
+  .btn-primary { background: #667eea; color: white; }
+  .btn-primary:hover:not(:disabled) { background: #5568d3; }
+  
+  .btn-secondary { background: #48bb78; color: white; }
+  .btn-secondary:hover:not(:disabled) { background: #38a169; }
+  
+  .btn-danger { background: #f56565; color: white; }
+  .btn-danger:hover:not(:disabled) { background: #e53e3e; }
+  
+  .btn-copy { background: #4299e1; color: white; font-size: 12px; padding: 8px 12px; }
+  
+  .status { padding: 12px; border-radius: 4px; text-align: center; font-weight: 600; margin: 15px 0; }
+  .status.disconnected { background: #5e3333; color: #ffb3b3; }
+  .status.connecting { background: #5e4c2c; color: #ffe0b3; }
+  .status.connected { background: #2d5e3f; color: #b3ffcc; }
+  .status.recording { background: #5e2d2d; color: #ffb3b3; animation: pulse 1s infinite; }
+  
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+  }
+  
+  .button-group { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+  
+  .divider { height: 1px; background: #444; margin: 15px 0; }
+  
+  .info-text { font-size: 12px; color: #aaa; line-height: 1.6; }
+  
+  .quality-section { margin-top: 15px; }
+  
+  select { padding: 8px; border: 1px solid #444; border-radius: 4px; background: #1a1a1a; color: #ddd; font-size: 13px; }
+  
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 15px 0; }
+  
+  .stat-box { background: #1a1a1a; padding: 12px; border-radius: 4px; border-left: 3px solid #667eea; }
+  .stat-label { font-size: 11px; color: #888; }
+  .stat-value { font-size: 14px; font-weight: bold; color: #667eea; margin-top: 4px; }
+  
+  .warning { background: #5e4c2c; color: #ffe0b3; padding: 10px; border-radius: 4px; margin: 10px 0; font-size: 12px; }
+  
+  @media (max-width: 1024px) {
+    .container { grid-template-columns: 1fr; }
+    .header h1 { font-size: 20px; }
+  }
+  
+  .source-select { padding: 8px; border: 1px solid #444; border-radius: 4px; background: #1a1a1a; color: #ddd; font-size: 13px; width: 100%; }
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
+</head>
+<body>
+
+<div class="header">
+  <h1>🖥️ P2P Screen Share</h1>
+  <p style="color: #aaa; margin: 0;">Real-time screen sharing via direct peer-to-peer connection</p>
+</div>
+
+<div class="container">
+  <!-- Left Panel: Control & Settings -->
+  <div class="panel">
+    <div class="panel-header">⚙️ Connection & Control</div>
+    <div class="panel-content">
+      <label>Your Signaling Code:</label>
+      <textarea id="signalOutput" readonly placeholder="Your code will appear here..."></textarea>
+      <button class="btn-copy" id="copySignal">Copy Code</button>
+      
+      <div class="divider"></div>
+      
+      <label>Paste Partner's Code:</label>
+      <textarea id="signalInput" placeholder="Paste code from other person..."></textarea>
+      
+      <div class="divider"></div>
+      
+      <div id="status" class="status disconnected">Status: Disconnected</div>
+      
+      <div class="button-group">
+        <button id="createOffer" class="btn-primary">Create & Wait</button>
+        <button id="createAnswer" class="btn-secondary">Connect</button>
+        <button id="disconnect" class="btn-danger" disabled>Disconnect</button>
+      </div>
+      
+      <button id="startShare" class="btn-primary" disabled style="width: 100%; margin: 10px 0;">Start Sharing Screen</button>
+      <button id="stopShare" class="btn-danger" disabled style="width: 100%; margin-bottom: 15px;">Stop Sharing</button>
+      
+      <div class="quality-section">
+        <label>Broadcast Quality:</label>
+        <select id="qualityPreset">
+          <option value="low">Low (640×360, 15fps) - Minimal Bandwidth</option>
+          <option value="medium" selected>Medium (1280×720, 24fps) - Balanced</option>
+          <option value="high">High (1920×1080, 30fps) - Best Quality</option>
+        </select>
+      </div>
+      
+      <div class="stats">
+        <div class="stat-box">
+          <div class="stat-label">Bitrate</div>
+          <div class="stat-value" id="statBitrate">0 kbps</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">FPS</div>
+          <div class="stat-value" id="statFps">0 fps</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Latency</div>
+          <div class="stat-value" id="statLatency">0 ms</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Packets Lost</div>
+          <div class="stat-value" id="statPktLoss">0</div>
+        </div>
+      </div>
+      
+      <div class="info-text" style="margin-top: auto;">
+        <strong>📋 How to Use:</strong><br>
+        1️⃣ Person A: "Create & Wait"<br>
+        2️⃣ Share code to Person B<br>
+        3️⃣ Person B: Paste & "Connect"<br>
+        4️⃣ Once connected: "Start Sharing"<br>
+        <br>
+        <strong>✨ Note:</strong> Screen sharing requires HTTPS or localhost
+      </div>
+    </div>
+  </div>
+  
+  <!-- Right Panel: Video Display -->
+  <div class="panel">
+    <div class="panel-header">📺 Screen Display</div>
+    <div class="panel-content">
+      <div class="video-container">
+        <video id="remoteVideo" autoplay playsinline></video>
+        <div id="noVideoMsg" class="no-video" style="display: none;">
+          <p style="font-size: 18px; margin: 0;">📽️</p>
+          <p>Waiting for remote screen share...</p>
+          <p style="font-size: 12px; color: #666;">Remote user needs to start sharing</p>
+        </div>
+      </div>
+      
+      <div style="margin-top: 15px;">
+        <label>Local Status:</label>
+        <div id="localStatus" style="background: #1a1a1a; padding: 10px; border-radius: 4px; border-left: 3px solid #f56565; color: #ffb3b3; font-size: 12px;">Not sharing</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let pc;
+let localStream;
+let statsInterval;
+let isInitiator = false;
+
+const statusEl = document.getElementById('status');
+const localStatusEl = document.getElementById('localStatus');
+const remoteVideo = document.getElementById('remoteVideo');
+const noVideoMsg = document.getElementById('noVideoMsg');
+
+const qualitySettings = {
+  low: { width: 640, height: 360, frameRate: 15, bitrate: 500000 },
+  medium: { width: 1280, height: 720, frameRate: 24, bitrate: 2500000 },
+  high: { width: 1920, height: 1080, frameRate: 30, bitrate: 5000000 }
+};
+
+function log(msg) {
+  console.log(`[P2P Screen Share] ${msg}`);
+}
+
+function updateStatus(text, type) {
+  statusEl.textContent = `Status: ${text}`;
+  statusEl.className = `status ${type}`;
+}
+
+function updateLocalStatus(text, isSharing = false) {
+  localStatusEl.textContent = text;
+  localStatusEl.style.borderColor = isSharing ? '#48bb78' : '#f56565';
+  localStatusEl.style.color = isSharing ? '#b3ffcc' : '#ffb3b3';
+}
+
+async function initConnection() {
+  try {
+    pc = new RTCPeerConnection({
+      iceServers: [
+        {urls: 'stun:stun.l.google.com:19302'},
+        {urls: 'stun:stun1.l.google.com:19302'},
+        {urls: 'stun:stun2.l.google.com:19302'},
+        {urls: 'stun:stun3.l.google.com:19302'},
+        {urls: 'stun:stun4.l.google.com:19302'}
+      ]
+    });
+    
+    pc.onconnectionstatechange = () => {
+      log(`Connection state: ${pc.connectionState}`);
+      if (pc.connectionState === 'connected') {
+        updateStatus('Connected & Ready', 'connected');
+        document.getElementById('startShare').disabled = false;
+      } else if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
+        updateStatus('Disconnected', 'disconnected');
+        document.getElementById('startShare').disabled = true;
+        document.getElementById('stopShare').disabled = true;
+      }
+    };
+    
+    pc.ontrack = (event) => {
+      log('Receiving remote video');
+      remoteVideo.srcObject = event.streams[0];
+      noVideoMsg.style.display = 'none';
+      remoteVideo.style.display = 'block';
+      startStatsMonitoring();
+    };
+    
+    pc.onicecandidate = (event) => {
+      if (event.candidate) return;
+      
+      const compressed = LZString.compressToBase64(JSON.stringify(pc.localDescription));
+      document.getElementById('signalOutput').value = compressed;
+      log('Signaling code ready');
+    };
+    
+    return true;
+  } catch (error) {
+    log(`Connection error: ${error.message}`);
+    alert('Connection failed: ' + error.message);
+    return false;
+  }
+}
+
+async function startScreenShare() {
+  try {
+    if (localStream) {
+      localStream.getTracks().forEach(t => t.stop());
+    }
+    
+    const quality = qualitySettings[document.getElementById('qualityPreset').value];
+    
+    const constraints = {
+      audio: false,
+      video: {
+        cursor: 'always',
+        displaySurface: 'monitor',
+        frameRate: { ideal: quality.frameRate },
+        width: { ideal: quality.width },
+        height: { ideal: quality.height }
+      }
+    };
+    
+    localStream = await navigator.mediaDevices.getDisplayMedia(constraints);
+    log(`Screen share started: ${quality.width}×${quality.height}@${quality.frameRate}fps`);
+    
+    // Replace or add video track
+    const videoTrack = localStream.getVideoTracks()[0];
+    
+    let sender = pc.getSenders().find(s => s.track?.kind === 'video');
+    if (sender) {
+      await sender.replaceTrack(videoTrack);
+    } else {
+      sender = pc.addTrack(videoTrack, localStream);
+    }
+    
+    // Apply bitrate constraints
+    const params = sender.getParameters();
+    if (!params.encodings || params.encodings.length === 0) {
+      params.encodings = [{}];
+    }
+    params.encodings[0].maxBitrate = quality.bitrate;
+    await sender.setParameters(params);
+    
+    document.getElementById('startShare').disabled = true;
+    document.getElementById('stopShare').disabled = false;
+    updateLocalStatus(`Sharing: ${quality.width}×${quality.height}`, true);
+    updateStatus('Sharing Screen', 'recording');
+    
+    // Handle user stopping share
+    videoTrack.onended = () => {
+      log('Screen share ended by user');
+      stopScreenShare();
+    };
+    
+  } catch (error) {
+    if (error.name === 'NotAllowedError') {
+      log('Screen share cancelled by user');
+    } else {
+      log(`Screen share error: ${error.message}`);
+      alert('Failed to share screen: ' + error.message);
+    }
+  }
+}
+
+function stopScreenShare() {
+  if (localStream) {
+    localStream.getTracks().forEach(t => t.stop());
+    localStream = null;
+  }
+  
+  document.getElementById('startShare').disabled = false;
+  document.getElementById('stopShare').disabled = true;
+  updateLocalStatus('Not sharing', false);
+  
+  if (pc?.connectionState === 'connected') {
+    updateStatus('Connected & Ready', 'connected');
+  }
+  
+  log('Screen share stopped');
+}
+
+function startStatsMonitoring() {
+  statsInterval = setInterval(async () => {
+    if (!pc) return;
+    
+    const stats = await pc.getStats();
+    let bitrate = 0;
+    let fps = 0;
+    let latency = 0;
+    let pktLoss = 0;
+    
+    stats.forEach(report => {
+      if (report.type === 'inbound-rtp' && report.kind === 'video') {
+        fps = report.framesPerSecond || 0;
+        pktLoss = report.packetsLost || 0;
+        
+        if (report.bytesReceived && report.timestamp) {
+          // Simplified bitrate calculation
+          const now = Date.now();
+          if (window.lastBytesReceived && window.lastTimestamp) {
+            const bytesDelta = report.bytesReceived - window.lastBytesReceived;
+            const timeDelta = (now - window.lastTimestamp) / 1000;
+            bitrate = Math.round((bytesDelta * 8) / timeDelta / 1000);
+          }
+          window.lastBytesReceived = report.bytesReceived;
+          window.lastTimestamp = now;
+        }
+      }
+      
+      if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+        latency = Math.round(report.currentRoundTripTime * 1000);
+      }
+    });
+    
+    document.getElementById('statBitrate').textContent = bitrate + ' kbps';
+    document.getElementById('statFps').textContent = fps + ' fps';
+    document.getElementById('statLatency').textContent = latency + ' ms';
+    document.getElementById('statPktLoss').textContent = pktLoss;
+  }, 1000);
+}
+
+function stopStatsMonitoring() {
+  if (statsInterval) {
+    clearInterval(statsInterval);
+    statsInterval = null;
+  }
+}
+
+document.getElementById('createOffer').onclick = async () => {
+  if (pc) {
+    alert('Connection already exists. Disconnect first.');
+    return;
+  }
+  
+  if (!await initConnection()) return;
+  
+  try {
+    isInitiator = true;
+    
+    const offer = await pc.createOffer({
+      offerToReceiveVideo: true
+    });
+    await pc.setLocalDescription(offer);
+    
+    updateStatus('Waiting for partner...', 'connecting');
+    log('Offer created');
+  } catch (error) {
+    log(`Error: ${error.message}`);
+    alert('Failed: ' + error.message);
+  }
+};
+
+document.getElementById('createAnswer').onclick = async () => {
+  if (pc) {
+    alert('Connection already exists. Disconnect first.');
+    return;
+  }
+  
+  const code = document.getElementById('signalInput').value;
+  if (!code) {
+    alert('Paste the code first!');
+    return;
+  }
+  
+  if (!await initConnection()) return;
+  
+  try {
+    isInitiator = false;
+    
+    const offer = JSON.parse(LZString.decompressFromBase64(code));
+    await pc.setRemoteDescription(offer);
+    
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    
+    updateStatus('Connecting...', 'connecting');
+    log('Answer created');
+  } catch (error) {
+    log(`Error: ${error.message}`);
+    alert('Failed: ' + error.message);
+  }
+};
+
+document.getElementById('signalInput').addEventListener('change', async () => {
+  if (!pc || !isInitiator || pc.remoteDescription) return;
+  
+  const code = document.getElementById('signalInput').value;
+  if (!code) return;
+  
+  try {
+    const answer = JSON.parse(LZString.decompressFromBase64(code));
+    await pc.setRemoteDescription(answer);
+    log('Answer processed');
+  } catch (error) {
+    log(`Error: ${error.message}`);
+  }
+});
+
+document.getElementById('copySignal').onclick = async () => {
+  const code = document.getElementById('signalOutput').value;
+  if (!code) {
+    alert('Create a connection first!');
+    return;
+  }
+  await navigator.clipboard.writeText(code);
+  alert('Code copied!');
+};
+
+document.getElementById('startShare').onclick = startScreenShare;
+document.getElementById('stopShare').onclick = stopScreenShare;
+
+document.getElementById('disconnect').onclick = () => {
+  stopScreenShare();
+  
+  if (pc) pc.close();
+  pc = null;
+  
+  stopStatsMonitoring();
+  updateStatus('Disconnected', 'disconnected');
+  updateLocalStatus('Not sharing', false);
+  
+  document.getElementById('startShare').disabled = true;
+  document.getElementById('stopShare').disabled = true;
+  document.getElementById('disconnect').disabled = true;
+  document.getElementById('createOffer').disabled = false;
+  document.getElementById('createAnswer').disabled = false;
+  document.getElementById('signalOutput').value = '';
+  document.getElementById('signalInput').value = '';
+  
+  remoteVideo.srcObject = null;
+  noVideoMsg.style.display = 'block';
+  remoteVideo.style.display = 'none';
+  
+  log('Disconnected');
+};
+
+window.addEventListener('beforeunload', () => {
+  stopScreenShare();
+  if (pc) pc.close();
+});
+
+noVideoMsg.style.display = 'block';
+log('P2P Screen Share initialized');
+</script>
+</body>
+</html>

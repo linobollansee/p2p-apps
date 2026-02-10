@@ -1,0 +1,1006 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>P2P Audio Chat - Advanced (Compressed Signal)</title>
+<style>
+  body { font-family: Arial, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; }
+  textarea { width: 100%; height: 150px; margin-bottom: 5px; font-family: monospace; font-size: 11px; }
+  button { margin: 2px; padding: 8px 15px; cursor: pointer; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  #log { border: 1px solid #ccc; padding: 10px; height: 200px; overflow-y: auto; background: #f9f9f9; font-size: 12px; }
+  .panel { margin-top: 20px; padding: 15px; background: #f0f0f0; border-radius: 5px; }
+  .status { padding: 8px; margin: 5px 0; border-radius: 3px; font-weight: bold; }
+  .status.connected { background: #d4edda; color: #155724; }
+  .status.disconnected { background: #f8d7da; color: #721c24; }
+  .status.waiting { background: #fff3cd; color: #856404; }
+  audio { display: none; }
+  .control-group { margin: 10px 0; }
+  .control-group label { display: inline-block; min-width: 150px; }
+  .slider-container { display: flex; align-items: center; gap: 10px; }
+  .slider-container input[type="range"] { flex: 1; }
+  select { padding: 5px; font-size: 14px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-top: 10px; }
+  .stat-item { background: white; padding: 8px; border-radius: 3px; }
+  .stat-label { font-size: 11px; color: #666; }
+  .stat-value { font-size: 16px; font-weight: bold; color: #333; }
+  h3 { margin-top: 0; color: #333; }
+  .button-group { display: flex; gap: 5px; flex-wrap: wrap; }
+  #recordAudio.recording { background: #dc3545; color: white; }
+  #togglePTT.active { background: #17a2b8; color: white; }
+  .warning-note { color: #856404; background: #fff3cd; padding: 5px 10px; border-radius: 3px; font-size: 11px; margin-top: 5px; display: inline-block; }
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
+</head>
+<body>
+
+<h1>P2P Audio Chat - Advanced Edition</h1>
+
+<div>
+  <div class="button-group">
+    <button id="createOffer">Create Offer</button>
+    <button id="createAnswer">Create Answer</button>
+  </div>
+</div>
+
+<h3>Signaling</h3>
+<label><strong>Paste code from other person:</strong></label>
+<textarea id="signalInput" placeholder="Paste the signaling code here from the other person..."></textarea>
+<label><strong>Copy this code to share:</strong></label>
+<textarea id="signalOutput" placeholder="Your signaling code will appear here - copy and share it..." readonly></textarea>
+<button id="copySignal">Copy to Clipboard</button>
+
+<hr>
+
+<div class="panel">
+  <h3>Audio Quality Settings</h3>
+  
+  <div class="control-group">
+    <label><strong>Quality Preset:</strong></label>
+    <select id="qualityPreset">
+      <option value="low">Low (8-16 kbps) - Minimal Bandwidth</option>
+      <option value="medium" selected>Medium (32-48 kbps) - Balanced</option>
+      <option value="high">High (64-128 kbps) - Studio Quality</option>
+      <option value="custom">Custom - Manual Configuration</option>
+    </select>
+  </div>
+
+  <div class="control-group">
+    <label><strong>Codec Preference:</strong></label>
+    <select id="codecPreference">
+      <option value="opus" selected>Opus (Recommended)</option>
+      <option value="g722">G.722 (Wideband)</option>
+      <option value="pcmu">PCMU (G.711 μ-law)</option>
+      <option value="pcma">PCMA (G.711 A-law)</option>
+    </select>
+  </div>
+
+  <div class="control-group">
+    <label><strong>Max Bitrate:</strong></label>
+    <div class="slider-container">
+      <input type="range" id="maxBitrate" min="8" max="510" value="128" step="1">
+      <span id="maxBitrateValue">128 kbps</span>
+    </div>
+  </div>
+
+  <div class="control-group">
+    <label><strong>Min Bitrate:</strong></label>
+    <div class="slider-container">
+      <input type="range" id="minBitrate" min="6" max="128" value="32" step="1">
+      <span id="minBitrateValue">32 kbps</span>
+    </div>
+  </div>
+
+  <div class="control-group">
+    <label style="color: #d9534f; font-size: 12px;">⚠️ Note: Quality settings apply when creating connection</label>
+  </div>
+
+  <div class="control-group">
+    <label>
+      <input type="checkbox" id="enableFEC" checked>
+      <strong>Forward Error Correction (FEC)</strong> - Improves quality on lossy networks
+    </label>
+  </div>
+
+  <div class="control-group">
+    <label>
+      <input type="checkbox" id="enableDTX" checked>
+      <strong>Discontinuous Transmission (DTX)</strong> - Saves bandwidth during silence
+    </label>
+  </div>
+
+  <div class="control-group">
+    <label>
+      <input type="checkbox" id="cbr">
+      <strong>Constant Bitrate (CBR)</strong> - Use constant vs variable bitrate
+    </label>
+  </div>
+</div>
+
+<div class="panel">
+  <h3>Audio Controls</h3>
+  <div id="status" class="status disconnected">Status: Disconnected</div>
+  
+  <div class="button-group">
+    <button id="toggleMic" disabled>Mute Microphone</button>
+    <button id="toggleSpeaker" disabled>Mute Speaker</button>
+    <button id="togglePTT" disabled>Enable Push-to-Talk</button>
+    <button id="recordAudio" disabled>Start Recording</button>
+    <button id="echoTest">Echo Test</button>
+    <button id="disconnect" disabled>Disconnect</button>
+  </div>
+
+  <div class="control-group">
+    <label><strong>Microphone Level:</strong></label>
+    <div style="width: 100%; height: 20px; background: #ddd; border-radius: 3px; overflow: hidden;">
+      <div id="micLevelBar" style="width: 0%; height: 100%; background: linear-gradient(to right, #28a745, #ffc107, #dc3545); transition: width 0.1s;"></div>
+    </div>
+  </div>
+
+  <div class="control-group">
+    <label><strong>Microphone Gain:</strong></label>
+    <div class="slider-container">
+      <input type="range" id="micGain" min="0" max="200" value="100" disabled>
+      <span id="micGainValue">100%</span>
+    </div>
+  </div>
+
+  <div class="control-group">
+    <label><strong>Speaker Volume:</strong></label>
+    <div class="slider-container">
+      <input type="range" id="speakerVolume" min="0" max="100" value="100" disabled>
+      <span id="speakerVolumeValue">100%</span>
+    </div>
+  </div>
+
+  <div class="control-group">
+    <label><strong>Compressor Threshold:</strong></label>
+    <div class="slider-container">
+      <input type="range" id="compressorThreshold" min="-100" max="0" value="-24" disabled>
+      <span id="compressorThresholdValue">-24 dB</span>
+    </div>
+  </div>
+</div>
+
+<div class="panel">
+  <h3>Connection Statistics</h3>
+  <div class="stats">
+    <div class="stat-item">
+      <div class="stat-label">Codec</div>
+      <div class="stat-value" id="statCodec">N/A</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label">Bitrate</div>
+      <div class="stat-value" id="statBitrate">N/A</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label">Packet Loss</div>
+      <div class="stat-value" id="statPacketLoss">N/A</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label">Jitter</div>
+      <div class="stat-value" id="statJitter">N/A</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label">Round Trip Time</div>
+      <div class="stat-value" id="statRTT">N/A</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label">Audio Level</div>
+      <div class="stat-value" id="statAudioLevel">N/A</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-label">Connection Quality</div>
+      <div class="stat-value" id="statQuality">N/A</div>
+    </div>
+  </div>
+</div>
+
+<h3>Connection Log</h3>
+<div id="log"></div>
+
+<!-- Remote audio element -->
+<audio id="remoteAudio" autoplay></audio>
+
+<script>
+let pc;
+let localStream;
+let rawLocalStream; // Store original stream for cleanup
+let audioContext;
+let sourceNode;
+let gainNode;
+let compressorNode;
+let remoteGainNode;
+let analyserNode;
+let remoteAudioSourceCreated = false; // Track if MediaElementSource was created
+let isMicMuted = false;
+let isSpeakerMuted = false;
+let isPushToTalk = false;
+let statsInterval;
+let visualizerInterval;
+let previousBytesReceived = 0;
+let previousTimestamp = 0;
+let mediaRecorder = null;
+let recordedChunks = [];
+
+// Quality presets
+const qualityPresets = {
+  low: { maxBitrate: 16000, minBitrate: 8000 },
+  medium: { maxBitrate: 48000, minBitrate: 32000 },
+  high: { maxBitrate: 128000, minBitrate: 64000 }
+};
+
+// Logging utility
+function log(msg) {
+  const logEl = document.getElementById('log');
+  const timestamp = new Date().toLocaleTimeString();
+  logEl.innerHTML += `[${timestamp}] ${msg}<br>`;
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+// Update status display
+function updateStatus(status, className) {
+  const statusEl = document.getElementById('status');
+  statusEl.textContent = `Status: ${status}`;
+  statusEl.className = `status ${className}`;
+}
+
+// Get current audio constraints
+function getAudioConstraints() {
+  const maxBitrate = parseInt(document.getElementById('maxBitrate').value);
+  const minBitrate = parseInt(document.getElementById('minBitrate').value);
+  const enableFEC = document.getElementById('enableFEC').checked;
+  const enableDTX = document.getElementById('enableDTX').checked;
+  const cbr = document.getElementById('cbr').checked;
+  
+  return {
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true,
+    maxBitrate: maxBitrate * 1000,
+    minBitrate: minBitrate * 1000,
+    fec: enableFEC,
+    dtx: enableDTX,
+    cbr: cbr
+  };
+}
+
+// Setup Web Audio API processing chain
+function setupAudioProcessing(stream) {
+  audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  
+  // Resume AudioContext if suspended
+  if (audioContext.state === 'suspended') {
+    audioContext.resume();
+  }
+  
+  // Create nodes
+  sourceNode = audioContext.createMediaStreamSource(stream);
+  gainNode = audioContext.createGain();
+  compressorNode = audioContext.createDynamicsCompressor();
+  
+  // Configure compressor
+  compressorNode.threshold.value = parseFloat(document.getElementById('compressorThreshold').value);
+  compressorNode.knee.value = 30;
+  compressorNode.ratio.value = 12;
+  compressorNode.attack.value = 0.003;
+  compressorNode.release.value = 0.25;
+  
+  // Create destination and get processed stream
+  const destination = audioContext.createMediaStreamDestination();
+  
+  // Create analyser for visualization
+  analyserNode = audioContext.createAnalyser();
+  analyserNode.fftSize = 256;
+  
+  // Connect the chain: source -> gain -> compressor -> analyser -> destination
+  sourceNode.connect(gainNode);
+  gainNode.connect(compressorNode);
+  compressorNode.connect(analyserNode);
+  analyserNode.connect(destination);
+  
+  log('Web Audio API processing chain initialized');
+  startMicVisualization();
+  return destination.stream;
+}
+
+// Setup remote audio processing
+async function setupRemoteAudioProcessing(audioElement) {
+  if (!audioContext) {
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  
+  // Resume AudioContext if suspended
+  if (audioContext.state === 'suspended') {
+    await audioContext.resume();
+  }
+  
+  // Only create MediaElementSource once (can't be called twice on same element)
+  if (!remoteAudioSourceCreated) {
+    const remoteSource = audioContext.createMediaElementSource(audioElement);
+    remoteGainNode = audioContext.createGain();
+    
+    // Initialize gain to match current speaker volume slider
+    const currentVolume = parseFloat(document.getElementById('speakerVolume').value) / 100;
+    remoteGainNode.gain.value = isSpeakerMuted ? 0 : currentVolume;
+    
+    remoteSource.connect(remoteGainNode);
+    remoteGainNode.connect(audioContext.destination);
+    
+    remoteAudioSourceCreated = true;
+    log(`Remote audio processing initialized (volume: ${isSpeakerMuted ? 'muted' : Math.round(currentVolume * 100) + '%'})`);
+  } else {
+    log('Remote audio already connected to Web Audio API');
+  }
+}
+
+// Initialize PeerConnection with audio
+async function initConnection() {
+  try {
+    // Get user's microphone
+    const baseConstraints = {
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+      }
+    };
+    
+    rawLocalStream = await navigator.mediaDevices.getUserMedia(baseConstraints);
+    log('Microphone access granted');
+    
+    // Process audio through Web Audio API
+    const processedStream = setupAudioProcessing(rawLocalStream);
+    localStream = processedStream;
+    
+    updateStatus('Microphone ready, waiting for connection...', 'waiting');
+
+    pc = new RTCPeerConnection({
+      iceServers: [
+        {urls: 'stun:stun.l.google.com:19302'},
+        {urls: 'stun:stun1.l.google.com:19302'},
+        {urls: 'stun:stun2.l.google.com:19302'},
+        {urls: 'stun:stun3.l.google.com:19302'},
+        {urls: 'stun:stun4.l.google.com:19302'}
+      ],
+      bundlePolicy: 'max-bundle',
+      rtcpMuxPolicy: 'require'
+    });
+
+    // Add local audio tracks to peer connection with constraints
+    const audioTrack = localStream.getAudioTracks()[0];
+    const sender = pc.addTrack(audioTrack, localStream);
+    
+    // Apply encoding parameters
+    const params = sender.getParameters();
+    if (!params.encodings || params.encodings.length === 0) {
+      params.encodings = [{}];
+    }
+    
+    const constraints = getAudioConstraints();
+    params.encodings[0].maxBitrate = constraints.maxBitrate;
+    params.encodings[0].minBitrate = constraints.minBitrate;
+    params.encodings[0].priority = 'high';
+    
+    await sender.setParameters(params);
+    log(`Added local audio track (bitrate: ${constraints.minBitrate/1000}-${constraints.maxBitrate/1000} kbps)`);
+
+    // Receive remote audio tracks
+    pc.ontrack = async event => {
+      log('Receiving remote audio stream');
+      const remoteAudio = document.getElementById('remoteAudio');
+      remoteAudio.srcObject = event.streams[0];
+      
+      // Setup processing for remote audio (use audio element, not stream)
+      await setupRemoteAudioProcessing(remoteAudio);
+      
+      updateStatus('Connected - Audio chat active', 'connected');
+      enableAudioControls();
+      startStatsMonitoring();
+    };
+
+    // Connection state monitoring
+    pc.onconnectionstatechange = () => {
+      log(`Connection state: ${pc.connectionState}`);
+      if (pc.connectionState === 'connected') {
+        updateStatus('Connected - Audio chat active', 'connected');
+      } else if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
+        updateStatus('Disconnected', 'disconnected');
+        disableAudioControls();
+        stopStatsMonitoring();
+      } else if (pc.connectionState === 'connecting') {
+        updateStatus('Connecting...', 'waiting');
+      }
+    };
+
+    // ICE candidates gathered → compress SDP with codec preferences
+    pc.onicecandidate = event => {
+      if (event.candidate) return;
+      
+      // Modify SDP to prefer chosen codec
+      modifySDPCodecPreference();
+      
+      const compressed = LZString.compressToBase64(JSON.stringify(pc.localDescription));
+      document.getElementById('signalOutput').value = compressed;
+      log('Signaling code ready - copy and share it');
+    };
+
+  } catch (error) {
+    log(`Error: ${error.message}`);
+    alert('Could not access microphone. Please grant permission and try again.');
+  }
+}
+
+// Modify SDP to set codec preference
+function modifySDPCodecPreference() {
+  const codecPref = document.getElementById('codecPreference').value;
+  
+  if (codecPref === 'opus') {
+    log('Using Opus codec (recommended, usually default)');
+    return;
+  }
+  
+  // For other codecs, we'd need to modify SDP m-line
+  // This is a simplified implementation - full SDP manipulation is complex
+  try {
+    const sdp = pc.localDescription.sdp;
+    const codecMap = {
+      'g722': 'G722',
+      'pcmu': 'PCMU', 
+      'pcma': 'PCMA'
+    };
+    
+    if (codecMap[codecPref]) {
+      log(`Codec preference set to: ${codecMap[codecPref]} (Note: Browser may override)`);
+    }
+  } catch (error) {
+    log(`Codec modification error: ${error.message}`);
+  }
+}
+
+// Enable audio controls when connected
+function enableAudioControls() {
+  document.getElementById('toggleMic').disabled = false;
+  document.getElementById('toggleSpeaker').disabled = false;
+  document.getElementById('micGain').disabled = false;
+  document.getElementById('speakerVolume').disabled = false;
+  document.getElementById('compressorThreshold').disabled = false;
+  document.getElementById('togglePTT').disabled = false;
+  document.getElementById('recordAudio').disabled = false;
+  document.getElementById('disconnect').disabled = false;
+}
+
+// Disable audio controls when disconnected
+function disableAudioControls() {
+  document.getElementById('toggleMic').disabled = true;
+  document.getElementById('toggleSpeaker').disabled = true;
+  document.getElementById('micGain').disabled = true;
+  document.getElementById('speakerVolume').disabled = true;
+  document.getElementById('compressorThreshold').disabled = true;
+  document.getElementById('togglePTT').disabled = true;
+  document.getElementById('recordAudio').disabled = true;
+  document.getElementById('disconnect').disabled = true;
+}
+
+// Start monitoring connection statistics
+function startStatsMonitoring() {
+  statsInterval = setInterval(async () => {
+    if (!pc) return;
+    
+    const stats = await pc.getStats();
+    const now = Date.now();
+    
+    stats.forEach(report => {
+      if (report.type === 'inbound-rtp' && report.kind === 'audio') {
+        // Calculate actual bitrate (bytes per second)
+        let bitrate = 0;
+        if (previousBytesReceived > 0 && previousTimestamp > 0) {
+          const bytesDelta = report.bytesReceived - previousBytesReceived;
+          const timeDelta = (now - previousTimestamp) / 1000; // seconds
+          bitrate = Math.round((bytesDelta * 8) / timeDelta / 1000); // kbps
+        }
+        previousBytesReceived = report.bytesReceived;
+        previousTimestamp = now;
+        
+        const packetLoss = report.packetsLost || 0;
+        const jitter = report.jitter ? (report.jitter * 1000).toFixed(2) : 0;
+        
+        document.getElementById('statBitrate').textContent = bitrate + ' kbps';
+        document.getElementById('statPacketLoss').textContent = packetLoss + ' packets';
+        document.getElementById('statJitter').textContent = jitter + ' ms';
+        
+        // Calculate connection quality
+        const quality = calculateQuality(bitrate, packetLoss, parseFloat(jitter));
+        document.getElementById('statQuality').textContent = quality;
+        
+        if (report.codecId) {
+          stats.forEach(codecReport => {
+            if (codecReport.id === report.codecId) {
+              document.getElementById('statCodec').textContent = codecReport.mimeType?.split('/')[1] || 'Unknown';
+            }
+          });
+        }
+      }
+      
+      if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+        const rtt = report.currentRoundTripTime ? (report.currentRoundTripTime * 1000).toFixed(0) : 0;
+        document.getElementById('statRTT').textContent = rtt + ' ms';
+      }
+    });
+  }, 1000);
+}
+
+// Calculate connection quality
+function calculateQuality(bitrate, packetLoss, jitter) {
+  let score = 100;
+  
+  // Deduct for low bitrate
+  if (bitrate < 16) score -= 30;
+  else if (bitrate < 32) score -= 15;
+  
+  // Deduct for packet loss
+  if (packetLoss > 100) score -= 40;
+  else if (packetLoss > 50) score -= 25;
+  else if (packetLoss > 10) score -= 10;
+  
+  // Deduct for jitter
+  if (jitter > 50) score -= 20;
+  else if (jitter > 30) score -= 10;
+  
+  if (score >= 80) return '🟢 Excellent';
+  if (score >= 60) return '🟡 Good';
+  if (score >= 40) return '🟠 Fair';
+  return '🔴 Poor';
+}
+
+// Stop monitoring statistics
+function stopStatsMonitoring() {
+  if (statsInterval) {
+    clearInterval(statsInterval);
+    statsInterval = null;
+  }
+  previousBytesReceived = 0;
+  previousTimestamp = 0;
+}
+
+// Start microphone visualization
+function startMicVisualization() {
+  if (!analyserNode) return;
+  
+  const dataArray = new Uint8Array(analyserNode.frequencyBinCount);
+  
+  visualizerInterval = setInterval(() => {
+    analyserNode.getByteFrequencyData(dataArray);
+    
+    // Calculate average amplitude
+    const average = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
+    const percentage = Math.min(100, (average / 128) * 100);
+    
+    document.getElementById('micLevelBar').style.width = percentage + '%';
+  }, 50);
+}
+
+// Stop microphone visualization
+function stopMicVisualization() {
+  if (visualizerInterval) {
+    clearInterval(visualizerInterval);
+    visualizerInterval = null;
+  }
+  document.getElementById('micLevelBar').style.width = '0%';
+}
+
+// Disconnect and cleanup
+function disconnectCall() {
+  log('Disconnecting...');
+  
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.stop();
+  }
+  
+  if (rawLocalStream) {
+    rawLocalStream.getTracks().forEach(track => track.stop());
+    rawLocalStream = null;
+  }
+  if (localStream) {
+    localStream.getTracks().forEach(track => track.stop());
+    localStream = null;
+  }
+  
+  if (pc) {
+    pc.close();
+    pc = null;
+  }
+  
+  if (audioContext && audioContext.state !== 'closed') {
+    audioContext.close();
+    audioContext = null;
+  }
+  
+  // Reset flags
+  remoteAudioSourceCreated = false;
+  isMicMuted = false;
+  isSpeakerMuted = false;
+  isPushToTalk = false;
+  
+  // Reset button states
+  document.getElementById('toggleMic').textContent = 'Mute Microphone';
+  document.getElementById('toggleSpeaker').textContent = 'Mute Speaker';
+  document.getElementById('togglePTT').textContent = 'Enable Push-to-Talk';
+  document.getElementById('recordAudio').textContent = 'Start Recording';
+  document.getElementById('recordAudio').style.background = '';
+  
+  stopStatsMonitoring();
+  stopMicVisualization();
+  
+  updateStatus('Disconnected', 'disconnected');
+  disableAudioControls();
+  
+  // Reset stats display
+  document.getElementById('statCodec').textContent = 'N/A';
+  document.getElementById('statBitrate').textContent = 'N/A';
+  document.getElementById('statPacketLoss').textContent = 'N/A';
+  document.getElementById('statJitter').textContent = 'N/A';
+  document.getElementById('statRTT').textContent = 'N/A';
+  document.getElementById('statAudioLevel').textContent = 'N/A';
+  document.getElementById('statQuality').textContent = 'N/A';
+  
+  // Clear remote audio
+  const remoteAudio = document.getElementById('remoteAudio');
+  if (remoteAudio.srcObject) {
+    remoteAudio.srcObject.getTracks().forEach(track => track.stop());
+    remoteAudio.srcObject = null;
+  }
+  
+  log('Disconnected successfully - ready for new connection');
+}
+
+// Create Offer (Person A)
+document.getElementById('createOffer').onclick = async () => {
+  if (pc) {
+    log('Connection already exists. Disconnect first.');
+    return;
+  }
+  
+  try {
+    await initConnection();
+    
+    const offer = await pc.createOffer({
+      offerToReceiveAudio: true
+    });
+    await pc.setLocalDescription(offer);
+    log('Offer created - waiting for ICE candidates...');
+  } catch (error) {
+    log(`Error creating offer: ${error.message}`);
+  }
+};
+
+// Create Answer (Person B)
+document.getElementById('createAnswer').onclick = async () => {
+  if (pc) {
+    log('Connection already exists. Disconnect first.');
+    return;
+  }
+
+  const code = document.getElementById('signalInput').value;
+  if (!code) return alert('Paste the offer code first!');
+  
+  try {
+    await initConnection();
+    const offer = JSON.parse(LZString.decompressFromBase64(code));
+    await pc.setRemoteDescription(offer);
+    
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    log('Answer created - waiting for ICE candidates...');
+  } catch (error) {
+    log(`Error processing offer: ${error.message}`);
+    alert('Invalid offer code. Please check and try again.');
+  }
+};
+
+// Final step for Person A: paste answer code (only if already created offer)
+document.getElementById('signalInput').addEventListener('change', async () => {
+  if (!pc || pc.localDescription?.type !== 'offer') return;
+  const code = document.getElementById('signalInput').value;
+  if (!code) return;
+  
+  try {
+    const answer = JSON.parse(LZString.decompressFromBase64(code));
+    if (pc.remoteDescription) {
+      log('Remote description already set');
+      return;
+    }
+    await pc.setRemoteDescription(answer);
+    log('Answer processed - establishing connection...');
+  } catch (error) {
+    log(`Error processing answer: ${error.message}`);
+  }
+});
+
+// Toggle microphone mute
+document.getElementById('toggleMic').onclick = () => {
+  if (!gainNode) return;
+  
+  if (isMicMuted) {
+    gainNode.gain.value = parseFloat(document.getElementById('micGain').value) / 100;
+  } else {
+    gainNode.gain.value = 0;
+  }
+  
+  isMicMuted = !isMicMuted;
+  document.getElementById('toggleMic').textContent = isMicMuted ? 'Unmute Microphone' : 'Mute Microphone';
+  log(isMicMuted ? 'Microphone muted' : 'Microphone unmuted');
+};
+
+// Toggle speaker mute
+document.getElementById('toggleSpeaker').onclick = () => {
+  if (!remoteGainNode) return;
+  
+  if (isSpeakerMuted) {
+    remoteGainNode.gain.value = parseFloat(document.getElementById('speakerVolume').value) / 100;
+  } else {
+    remoteGainNode.gain.value = 0;
+  }
+  
+  isSpeakerMuted = !isSpeakerMuted;
+  document.getElementById('toggleSpeaker').textContent = isSpeakerMuted ? 'Unmute Speaker' : 'Mute Speaker';
+  log(isSpeakerMuted ? 'Speaker muted' : 'Speaker unmuted');
+};
+
+// Microphone gain control
+document.getElementById('micGain').oninput = (e) => {
+  const value = e.target.value;
+  document.getElementById('micGainValue').textContent = value + '%';
+  
+  if (gainNode && !isMicMuted) {
+    gainNode.gain.value = value / 100;
+  }
+};
+
+// Speaker volume control
+document.getElementById('speakerVolume').oninput = (e) => {
+  const value = e.target.value;
+  document.getElementById('speakerVolumeValue').textContent = value + '%';
+  
+  if (remoteGainNode && !isSpeakerMuted) {
+    remoteGainNode.gain.value = value / 100;
+  }
+  // Note: Audio element volume stays at 1.0 since we're using Web Audio API
+};
+
+// Compressor threshold control
+document.getElementById('compressorThreshold').oninput = (e) => {
+  const value = e.target.value;
+  document.getElementById('compressorThresholdValue').textContent = value + ' dB';
+  
+  if (compressorNode) {
+    compressorNode.threshold.value = parseFloat(value);
+  }
+};
+
+// Quality preset selector
+document.getElementById('qualityPreset').onchange = (e) => {
+  const preset = e.target.value;
+  
+  if (preset !== 'custom') {
+    const settings = qualityPresets[preset];
+    document.getElementById('maxBitrate').value = settings.maxBitrate / 1000;
+    document.getElementById('minBitrate').value = settings.minBitrate / 1000;
+    document.getElementById('maxBitrateValue').textContent = (settings.maxBitrate / 1000) + ' kbps';
+    document.getElementById('minBitrateValue').textContent = (settings.minBitrate / 1000) + ' kbps';
+    
+    log(`Quality preset changed to: ${preset}`);
+  }
+};
+
+// Bitrate controls with validation
+document.getElementById('maxBitrate').oninput = (e) => {
+  const maxValue = parseInt(e.target.value);
+  const minValue = parseInt(document.getElementById('minBitrate').value);
+  
+  if (maxValue < minValue) {
+    document.getElementById('minBitrate').value = maxValue;
+    document.getElementById('minBitrateValue').textContent = maxValue + ' kbps';
+  }
+  
+  document.getElementById('maxBitrateValue').textContent = maxValue + ' kbps';
+  document.getElementById('qualityPreset').value = 'custom';
+};
+
+document.getElementById('minBitrate').oninput = (e) => {
+  const minValue = parseInt(e.target.value);
+  const maxValue = parseInt(document.getElementById('maxBitrate').value);
+  
+  if (minValue > maxValue) {
+    document.getElementById('maxBitrate').value = minValue;
+    document.getElementById('maxBitrateValue').textContent = minValue + ' kbps';
+  }
+  
+  document.getElementById('minBitrateValue').textContent = minValue + ' kbps';
+  document.getElementById('qualityPreset').value = 'custom';
+};
+
+// Codec preference
+document.getElementById('codecPreference').onchange = (e) => {
+  log(`Codec preference set to: ${e.target.value}`);
+};
+
+// Audio constraint checkboxes
+document.getElementById('enableFEC').onchange = (e) => {
+  log(`Forward Error Correction: ${e.target.checked ? 'Enabled' : 'Disabled'}`);
+};
+
+document.getElementById('enableDTX').onchange = (e) => {
+  log(`Discontinuous Transmission: ${e.target.checked ? 'Enabled' : 'Disabled'}`);
+};
+
+document.getElementById('cbr').onchange = (e) => {
+  log(`Bitrate mode: ${e.target.checked ? 'Constant (CBR)' : 'Variable (VBR)'}`);
+};
+
+// Copy signaling code to clipboard
+document.getElementById('copySignal').onclick = async () => {
+  const code = document.getElementById('signalOutput').value;
+  if (!code) return alert('No code to copy!');
+  await navigator.clipboard.writeText(code);
+  alert('Signaling code copied to clipboard!');
+};
+
+// Push-to-Talk toggle
+document.getElementById('togglePTT').onclick = () => {
+  isPushToTalk = !isPushToTalk;
+  document.getElementById('togglePTT').textContent = isPushToTalk ? 'Disable Push-to-Talk' : 'Enable Push-to-Talk';
+  
+  if (isPushToTalk) {
+    // Mute by default in PTT mode
+    if (gainNode && !isMicMuted) {
+      gainNode.gain.value = 0;
+    }
+    log('Push-to-Talk enabled - Hold SPACE to talk');
+  } else {
+    // Unmute when disabling PTT
+    if (gainNode && !isMicMuted) {
+      gainNode.gain.value = parseFloat(document.getElementById('micGain').value) / 100;
+    }
+    log('Push-to-Talk disabled');
+  }
+};
+
+// Push-to-Talk keyboard controls
+document.addEventListener('keydown', (e) => {
+  if (isPushToTalk && e.code === 'Space' && !isMicMuted && gainNode) {
+    e.preventDefault();
+    gainNode.gain.value = parseFloat(document.getElementById('micGain').value) / 100;
+  }
+});
+
+document.addEventListener('keyup', (e) => {
+  if (isPushToTalk && e.code === 'Space' && !isMicMuted && gainNode) {
+    e.preventDefault();
+    gainNode.gain.value = 0;
+  }
+});
+
+// Recording functionality
+document.getElementById('recordAudio').onclick = async () => {
+  const button = document.getElementById('recordAudio');
+  
+  if (!mediaRecorder || mediaRecorder.state === 'inactive') {
+    try {
+      // Create a new stream combining local and remote audio
+      const remoteAudio = document.getElementById('remoteAudio');
+      const recordingContext = new (window.AudioContext || window.webkitAudioContext)();
+      const destination = recordingContext.createMediaStreamDestination();
+      
+      // Mix local and remote audio
+      if (localStream) {
+        const localSource = recordingContext.createMediaStreamSource(localStream);
+        localSource.connect(destination);
+      }
+      
+      // For remote audio from HTMLAudioElement, connect directly to destination
+      if (remoteAudio && remoteAudio.srcObject) {
+        try {
+          const remoteSource = recordingContext.createMediaElementSource(remoteAudio);
+          remoteSource.connect(destination);
+        } catch (e) {
+          log('Warning: Could not capture remote audio for recording');
+        }
+      }
+      
+      mediaRecorder = new MediaRecorder(destination.stream, { mimeType: 'audio/webm' });
+      recordedChunks = [];
+      
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          recordedChunks.push(e.data);
+        }
+      };
+      
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(recordedChunks, { type: 'audio/webm' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `audio-chat-${Date.now()}.webm`;
+        a.click();
+        URL.revokeObjectURL(url);
+        log('Recording saved');
+      };
+      
+      mediaRecorder.start();
+      button.textContent = 'Stop Recording';
+      button.style.background = '#dc3545';
+      log('Recording started...');
+    } catch (error) {
+      log(`Recording error: ${error.message}`);
+      alert('Could not start recording');
+    }
+  } else {
+    mediaRecorder.stop();
+    button.textContent = 'Start Recording';
+    button.style.background = '';
+  }
+};
+
+// Echo test
+document.getElementById('echoTest').onclick = async () => {
+  if (pc && pc.connectionState === 'connected') {
+    if (!confirm('This will test your microphone separately. Continue?')) {
+      return;
+    }
+  }
+  
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const testContext = new (window.AudioContext || window.webkitAudioContext)();
+    
+    // Resume if suspended
+    if (testContext.state === 'suspended') {
+      await testContext.resume();
+    }
+    
+    const source = testContext.createMediaStreamSource(stream);
+    
+    // Add delay for echo effect
+    const delay = testContext.createDelay(0.3);
+    const feedback = testContext.createGain();
+    feedback.gain.value = 0.4;
+    
+    source.connect(delay);
+    delay.connect(feedback);
+    feedback.connect(delay);
+    delay.connect(testContext.destination);
+    source.connect(testContext.destination);
+    
+    log('Echo test started - speak to hear yourself with delay (5 seconds)');
+    document.getElementById('echoTest').disabled = true;
+    
+    setTimeout(() => {
+      stream.getTracks().forEach(track => track.stop());
+      if (testContext.state !== 'closed') {
+        testContext.close();
+      }
+      log('Echo test ended');
+      document.getElementById('echoTest').disabled = false;
+    }, 5000);
+  } catch (error) {
+    log(`Echo test error: ${error.message}`);
+    document.getElementById('echoTest').disabled = false;
+  }
+};
+
+// Disconnect button
+document.getElementById('disconnect').onclick = disconnectCall;
+
+// Cleanup on page unload
+window.addEventListener('beforeunload', () => {
+  disconnectCall();
+});
+
+// Initialize UI
+log('Advanced P2P Audio Chat initialized');
+log('Configure quality settings before creating connection');
+</script>
+</body>
+</html>

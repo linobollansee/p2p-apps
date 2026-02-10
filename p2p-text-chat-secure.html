@@ -1,0 +1,1054 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>P2P Text Chat - Secure</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'">
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 1800px; width: 100%; margin: 0 auto; padding: 12px; background: #f5f5f5; }
+  
+  .container { display: grid; grid-template-columns: 0.35fr 1.65fr; gap: 16px; height: calc(100vh - 24px); width: 100%; }
+  
+  .panel { background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); display: flex; flex-direction: column; overflow: hidden; }
+  
+  .panel h2 { margin: 0; padding: 12px 14px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; font-size: 15px; }
+  
+  .content { flex: 1; display: flex; flex-direction: column; padding: 14px; gap: 12px; overflow: hidden; min-height: 0; }
+  
+  label { display: block; font-weight: 600; margin-bottom: 8px; color: #333; font-size: 12px; }
+  
+  textarea { width: 100%; min-height: 70px; max-height: 180px; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-family: monospace; font-size: 12px; line-height: 1.4; resize: vertical; overflow-y: auto; }
+  
+  .button-group { display: flex; gap: 8px; flex-wrap: wrap; }
+  
+  button { padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; transition: all 0.3s; font-size: 13px; }
+  
+  button:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+  
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  
+  .btn-primary { background: #667eea; color: white; }
+  .btn-primary:hover:not(:disabled) { background: #5568d3; }
+  
+  .btn-secondary { background: #48bb78; color: white; }
+  .btn-secondary:hover:not(:disabled) { background: #38a169; }
+  
+  .btn-danger { background: #f56565; color: white; }
+  .btn-danger:hover:not(:disabled) { background: #e53e3e; }
+  
+  .btn-copy { background: #4299e1; color: white; font-size: 12px; padding: 8px 12px; }
+  
+  .status { padding: 12px; border-radius: 4px; text-align: center; font-weight: 600; }
+  .status.disconnected { background: #fed7d7; color: #c53030; }
+  .status.connecting { background: #feebc8; color: #c05621; }
+  .status.connected { background: #c6f6d5; color: #22543d; }
+  .status.encrypted { background: #bee3f8; color: #2c5282; }
+  
+  .chat-area { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  
+  .messages { flex: 1 1 auto; min-height: 0; overflow-y: auto; background: #f9f9f9; padding: 15px; border-radius: 4px; margin-bottom: 10px; }
+  
+  .message { margin-bottom: 12px; padding: 10px 12px; border-radius: 4px; max-width: 85%; word-wrap: break-word; }
+  
+  .message.local { align-self: flex-end; background: #667eea; color: white; margin-left: auto; }
+  .message.remote { align-self: flex-start; background: #e2e8f0; color: #2d3748; }
+  
+  .message-time { font-size: 11px; opacity: 0.7; margin-top: 4px; }
+  
+  .message-info { font-size: 10px; opacity: 0.6; margin-top: 2px; text-align: right; }
+  
+  .input-group { display: flex; gap: 8px; flex: 0 0 auto; align-items: center; }
+  
+  input[type="text"] { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
+  
+  input[type="text"]:focus { outline: none; border-color: #667eea; box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1); }
+  
+  .info-text { font-size: 11px; color: #666; display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; justify-content: center; margin: 6px 0 2px; line-height: 1.2; }
+  .info-label { font-weight: 700; color: #444; }
+  .info-chip { background: #edf2f7; color: #2d3748; padding: 2px 8px; border-radius: 999px; font-size: 11px; }
+  .code-actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  
+  .divider { height: 1px; background: #e2e8f0; margin: 10px 0; }
+  
+  .security-badge { display: inline-block; background: #c6f6d5; color: #22543d; padding: 3px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; margin: 5px 0; }
+  
+  .warning-box { background: #fff5f5; border: 1px solid #feb2b2; color: #742a2a; padding: 10px; border-radius: 4px; font-size: 12px; margin: 10px 0; }
+  .clipboard-status { min-height: 16px; font-size: 11px; color: #4a5568; text-align: center; }
+  .clipboard-status.ok { color: #22543d; }
+  .clipboard-status.warn { color: #744210; }
+  .clipboard-status.error { color: #742a2a; }
+  
+  .key-exchange-section { background: #f7f8fb; padding: 8px; border-radius: 4px; margin: 6px 0; border-left: 3px solid #667eea; }
+
+  .panel-signaling .content { padding: 10px; gap: 10px; }
+  .panel-signaling h2 { font-size: 14px; padding: 10px 12px; }
+  .panel-signaling .key-exchange-section { background: transparent; border-left: none; padding: 0; margin: 4px 0; }
+  .panel-signaling label { font-size: 11px; margin-bottom: 6px; }
+  .panel-signaling .code-actions { margin-top: 6px; }
+  .panel-signaling textarea { min-height: 60px; max-height: 140px; }
+  
+  @media (max-width: 768px) {
+    .container { grid-template-columns: 1fr; }
+    .message { max-width: 100%; }
+  }
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tweetnacl@1.0.3/nacl-fast.min.js"></script>
+</head>
+<body>
+
+<div class="container">
+  <!-- Left Panel: Signaling -->
+  <div class="panel panel-signaling">
+    <h2>💬 Connection Setup</h2>
+    <div class="content">
+      <div class="key-exchange-section">
+        <div class="security-badge">🔐 End-to-End Encrypted</div>
+        <label for="signalOutput"><strong>STEP 1 & 3: YOUR CODE</strong> (Copy & Share → Receive Answer)</label>
+        <textarea id="signalOutput" readonly placeholder="Signaling code will appear here..."></textarea>
+        <div class="code-actions">
+          <button class="btn-copy" id="copySignal">📋 Copy Code</button>
+        </div>
+      </div>
+      
+      <div class="divider"></div>
+      
+      <div class="key-exchange-section">
+        <label for="signalInput"><strong>STEP 2 & 4: PARTNER CODE</strong> (Paste Offer → Paste Answer)</label>
+        <textarea id="signalInput" placeholder="Paste code from other person..."></textarea>
+        <div class="code-actions">
+          <button class="btn-copy" id="pasteSignal">📋 Paste Code</button>
+        </div>
+      </div>
+      
+      <div class="divider"></div>
+      
+      <div id="status" class="status disconnected">❌ DISCONNECTED</div>
+      
+      <div class="button-group">
+        <button id="createOffer" class="btn-primary">📋 CREATE & WAIT</button>
+        <button id="createAnswer" class="btn-secondary">🔗 RECEIVE & CONNECT</button>
+        <button id="disconnect" class="btn-danger" disabled>🚫 DISCONNECT</button>
+        <button id="refreshPage" class="btn-secondary">🔄 REFRESH</button>
+      </div>
+
+      <div id="clipboardStatus" class="clipboard-status" role="status" aria-live="polite"></div>
+      
+    </div>
+  </div>
+  
+  <!-- Right Panel: Chat -->
+  <div class="panel">
+    <h2>🔒 Secure Chat</h2>
+    <div class="content">
+      <div class="chat-area">
+        <div class="messages" id="messages"></div>
+        <div class="input-group">
+          <label for="messageInput" style="display: none;">Message input field</label>
+          <input type="text" id="messageInput" placeholder="Message..." disabled maxlength="2000">
+          <button id="sendBtn" class="btn-primary" disabled>💬 SEND</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Verify libraries are loaded
+if (typeof LZString === 'undefined') {
+  console.error('LZString library failed to load');
+  document.body.innerHTML = '<h1>Error: Required library failed to load. Check your internet connection.</h1>';
+}
+
+if (typeof nacl === 'undefined') {
+  console.error('NaCl library failed to load');
+  document.body.innerHTML = '<h1>Error: Encryption library failed to load. Check your internet connection.</h1>';
+}
+
+// Ensure nacl.util exists (fallback implementation using modern APIs)
+if (!nacl.util) {
+  nacl.util = {
+    encodeBase64: function(arr) {
+      let binary = '';
+      for (let i = 0; i < arr.length; i++) {
+        binary += String.fromCharCode(arr[i]);
+      }
+      return btoa(binary);
+    },
+    decodeBase64: function(str) {
+      const binary = atob(str);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      return bytes;
+    },
+    encodeUTF8: function(str) {
+      return new TextEncoder().encode(str);
+    },
+    decodeUTF8: function(arr) {
+      return new TextDecoder().decode(arr);
+    }
+  };
+}
+
+// ============================================
+// SECURITY CONFIGURATION
+// ============================================
+const SECURITY_CONFIG = {
+  MAX_MESSAGE_LENGTH: 2000,
+  RATE_LIMIT_MESSAGES: 10, // messages per second
+  RATE_LIMIT_WINDOW: 1000, // milliseconds
+  MESSAGE_TIMEOUT: 30000, // milliseconds
+  ENCRYPTION_ENABLED: true
+};
+
+// ============================================
+// CRYPTO MODULE
+// ============================================
+const Crypto = {
+  generateKeyPair: () => nacl.box.keyPair(),
+  
+  generateNonce: () => nacl.randomBytes(nacl.box.nonceLength),
+  
+  encrypt: (plaintext, nonce, publicKey, secretKey) => {
+    // Ensure plaintext is a string
+    if (typeof plaintext !== 'string') {
+      throw new Error(`encrypt: plaintext must be string, got ${typeof plaintext}`);
+    }
+    if (!(nonce instanceof Uint8Array)) {
+      throw new Error(`encrypt: nonce must be Uint8Array, got ${typeof nonce}`);
+    }
+    if (!(publicKey instanceof Uint8Array)) {
+      throw new Error(`encrypt: publicKey must be Uint8Array, got ${typeof publicKey}`);
+    }
+    if (!(secretKey instanceof Uint8Array)) {
+      throw new Error(`encrypt: secretKey must be Uint8Array, got ${typeof secretKey}`);
+    }
+    
+    // Use TextEncoder for reliability
+    const encoder = new TextEncoder();
+    const plaintextBytes = encoder.encode(plaintext);
+    
+    const ciphertext = nacl.box(plaintextBytes, nonce, publicKey, secretKey);
+    return {
+      ciphertext: nacl.util.encodeBase64(ciphertext),
+      nonce: nacl.util.encodeBase64(nonce)
+    };
+  },
+  
+  decrypt: (ciphertext, nonce, publicKey, secretKey) => {
+    try {
+      // Ensure inputs are correct types
+      if (typeof ciphertext !== 'string') {
+        throw new Error(`decrypt: ciphertext must be base64 string, got ${typeof ciphertext}`);
+      }
+      if (typeof nonce !== 'string') {
+        throw new Error(`decrypt: nonce must be base64 string, got ${typeof nonce}`);
+      }
+      
+      const ciphertextBytes = nacl.util.decodeBase64(ciphertext);
+      const nonceBytes = nacl.util.decodeBase64(nonce);
+      const plaintext = nacl.box.open(ciphertextBytes, nonceBytes, publicKey, secretKey);
+      
+      if (!plaintext) {
+        return null;
+      }
+      
+      // Use TextDecoder to convert Uint8Array back to string
+      const decoder = new TextDecoder();
+      return decoder.decode(plaintext);
+    } catch (e) {
+      return null;
+    }
+  },
+  
+  sign: (message, signingSecretKey) => {
+    // Ensure message is string
+    if (typeof message !== 'string') {
+      throw new Error(`sign: message must be string, got ${typeof message}`);
+    }
+    if (!(signingSecretKey instanceof Uint8Array)) {
+      throw new Error(`sign: signingSecretKey must be Uint8Array, got ${typeof signingSecretKey}`);
+    }
+    if (signingSecretKey.length !== 64) {
+      throw new Error(`sign: signingSecretKey must be 64 bytes, got ${signingSecretKey.length}`);
+    }
+    
+    // Use TextEncoder for reliability
+    const encoder = new TextEncoder();
+    const messageBytes = encoder.encode(message);
+    const signature = nacl.sign(messageBytes, signingSecretKey);
+    return nacl.util.encodeBase64(signature);
+  },
+  
+  verify: (signedMessage, signingPublicKey) => {
+    try {
+      if (typeof signedMessage !== 'string') {
+        throw new Error(`verify: signedMessage must be base64 string, got ${typeof signedMessage}`);
+      }
+      if (!(signingPublicKey instanceof Uint8Array)) {
+        throw new Error(`verify: signingPublicKey must be Uint8Array, got ${typeof signingPublicKey}`);
+      }
+      
+      const signedBytes = nacl.util.decodeBase64(signedMessage);
+      const openedBytes = nacl.sign.open(signedBytes, signingPublicKey);
+      
+      if (!openedBytes) {
+        return null;
+      }
+      
+      // Use TextDecoder to convert Uint8Array back to string
+      const decoder = new TextDecoder();
+      return decoder.decode(openedBytes);
+    } catch (e) {
+      return null;
+    }
+  }
+};
+
+// ============================================
+// RATE LIMITER
+// ============================================
+const RateLimiter = {
+  messageTimestamps: [],
+  
+  canSend: function() {
+    const now = Date.now();
+    this.messageTimestamps = this.messageTimestamps.filter(
+      t => now - t < SECURITY_CONFIG.RATE_LIMIT_WINDOW
+    );
+    
+    if (this.messageTimestamps.length >= SECURITY_CONFIG.RATE_LIMIT_MESSAGES) {
+      return false;
+    }
+    
+    this.messageTimestamps.push(now);
+    return true;
+  },
+  
+  reset: function() {
+    this.messageTimestamps = [];
+  }
+};
+
+// ============================================
+// MESSAGE VALIDATION
+// ============================================
+const MessageValidator = {
+  validateSignalingCode: (code) => {
+    if (!code || typeof code !== 'string') {
+      return null;
+    }
+    
+    code = code.trim();
+    if (code.length === 0) {
+      return null;
+    }
+    
+    if (code.length > 50000) {
+      return null;
+    }
+    
+    try {
+      const decompressed = LZString.decompressFromBase64(code);
+      if (!decompressed) {
+        return null;
+      }
+      
+      const parsed = JSON.parse(decompressed);
+      
+      // Validate required fields
+      if (!parsed.type) {
+        return null;
+      }
+      if (!parsed.sdp) {
+        return null;
+      }
+      if (parsed.type !== 'offer' && parsed.type !== 'answer') {
+        return null;
+      }
+      
+      return parsed;
+    } catch (e) {
+      return null;
+    }
+  },
+  
+  validateMessage: (msg) => {
+    if (!msg || typeof msg !== 'object') {
+      return false;
+    }
+    if (!msg.ciphertext || typeof msg.ciphertext !== 'string') {
+      return false;
+    }
+    if (!msg.nonce || typeof msg.nonce !== 'string') {
+      return false;
+    }
+    if (!msg.signature || typeof msg.signature !== 'string') {
+      return false;
+    }
+    if (msg.timestamp && typeof msg.timestamp !== 'number') {
+      return false;
+    }
+    
+    return true;
+  },
+  
+  sanitizeInput: (input) => {
+    return String(input).trim().substring(0, SECURITY_CONFIG.MAX_MESSAGE_LENGTH);
+  }
+};
+
+// ============================================
+// MAIN APP STATE
+// ============================================
+let pc;
+let dataChannel;
+let isInitiator = false;
+let isDisconnecting = false;
+
+// Cryptography state
+let localBoxKeyPair = null;      // 32-byte keys for encryption
+let localSigningKeyPair = null;  // 64-byte keys for signing
+let remoteBoxPublicKey = null;   // 32-byte public key for encryption
+let remoteSigningPublicKey = null; // 32-byte public key for signing
+let sharedSecret = null;
+
+// ICE candidate collection
+let localIceCandidates = [];
+let remoteIceCandidates = [];
+
+// Connection timing
+let connectionStartTime = null;
+let connectionTimeoutId = null;
+const CONNECTION_TIMEOUT = 60000;
+
+const statusEl = document.getElementById('status');
+const messagesEl = document.getElementById('messages');
+const messageInput = document.getElementById('messageInput');
+const sendBtn = document.getElementById('sendBtn');
+
+function updateStatus(text, type) {
+  statusEl.textContent = text;
+  statusEl.className = `status ${type}`;
+}
+
+let clipboardStatusTimer = null;
+function setClipboardStatus(message, type = '') {
+  const statusEl = document.getElementById('clipboardStatus');
+  if (!statusEl) return;
+  let displayMessage = message || '';
+  if (type === 'error' && displayMessage && !displayMessage.startsWith('❌')) {
+    displayMessage = '❌ ' + displayMessage;
+  } else if (type === 'warn' && displayMessage && !displayMessage.startsWith('⚠️')) {
+    displayMessage = '⚠️ ' + displayMessage;
+  } else if (type === 'ok' && displayMessage && !displayMessage.startsWith('✅')) {
+    displayMessage = '✅ ' + displayMessage;
+  }
+  statusEl.textContent = displayMessage;
+  statusEl.className = `clipboard-status${type ? ` ${type}` : ''}`;
+  if (clipboardStatusTimer) {
+    clearTimeout(clipboardStatusTimer);
+    clipboardStatusTimer = null;
+  }
+  if (message) {
+    clipboardStatusTimer = setTimeout(() => {
+      statusEl.textContent = '';
+      statusEl.className = 'clipboard-status';
+      clipboardStatusTimer = null;
+    }, 4000);
+  }
+}
+
+function adjustCodeTextarea(textarea, value) {
+  if (!textarea) return;
+  const text = typeof value === 'string' ? value : (textarea.value || '');
+  const charsPerLine = 80;
+  const lines = Math.max(4, Math.ceil(text.length / charsPerLine));
+  const lineHeight = 16;
+  const padding = 20;
+  const targetHeight = Math.min(320, Math.max(120, lines * lineHeight + padding));
+  textarea.style.height = 'auto';
+  textarea.style.height = `${targetHeight}px`;
+}
+
+function addMessage(text, sender = 'local', verified = false) {
+  const div = document.createElement('div');
+  div.className = `message ${sender}`;
+  
+  const time = new Date();
+  const timeStr = time.toLocaleTimeString();
+  
+  const msgSpan = document.createElement('span');
+  msgSpan.textContent = text; // ✅ XSS SAFE - using textContent
+  div.appendChild(msgSpan);
+  
+  const timeEl = document.createElement('div');
+  timeEl.className = 'message-time';
+  timeEl.textContent = timeStr;
+  div.appendChild(timeEl);
+  
+  const infoEl = document.createElement('div');
+  infoEl.className = 'message-info';
+  if (sender === 'local') {
+    infoEl.textContent = verified ? '✅ SENT' : '⚠️ UNVERIFIED';
+  } else {
+    infoEl.textContent = verified ? '✅ VERIFIED' : '⚠️ UNVERIFIED';
+  }
+  div.appendChild(infoEl);
+  
+  messagesEl.appendChild(div);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+function enableChat() {
+  messageInput.disabled = false;
+  sendBtn.disabled = false;
+  document.getElementById('disconnect').disabled = false;
+}
+
+function disableChat() {
+  messageInput.disabled = true;
+  sendBtn.disabled = true;
+  messageInput.value = '';
+  document.getElementById('disconnect').disabled = true;
+}
+
+function setupDataChannel(channel) {
+  dataChannel = channel;
+  
+  dataChannel.onopen = () => {
+    updateStatus('🔒 Connected - Encrypted', 'encrypted');
+    enableChat();
+    addMessage('✅ Secure connection established', 'local', true);
+  };
+  
+  dataChannel.onmessage = (event) => {
+    try {
+      
+      const messageData = JSON.parse(event.data);
+      
+      // Validate message structure
+      if (!MessageValidator.validateMessage(messageData)) {
+        return;
+      }
+      
+      // Decrypt message using remote's box public key and our box secret key
+      const decrypted = Crypto.decrypt(
+        messageData.ciphertext,
+        messageData.nonce,
+        remoteBoxPublicKey,
+        localBoxKeyPair.secretKey
+      );
+      
+      if (!decrypted) {
+        addMessage('❌ [Decryption failed]', 'remote', false);
+        return;
+      }
+      
+      // Verify signature using remote's signing public key
+      const verified = Crypto.verify(messageData.signature, remoteSigningPublicKey) === decrypted;
+      
+      addMessage(decrypted, 'remote', verified);
+      
+    } catch (error) {
+    }
+  };
+  
+  dataChannel.onclose = () => {
+    handleDisconnect();
+    dataChannel = null;
+  };
+  
+  dataChannel.onerror = (error) => {
+    setClipboardStatus('Data channel error: ' + error.message, 'error');
+    handleDisconnect();
+  };
+}
+
+// Generate and display signaling code with ICE candidates
+function generateAndDisplaySignalingCode() {
+  if (!pc || !pc.localDescription || !localBoxKeyPair || !localSigningKeyPair) {
+    return false;
+  }
+  
+  try {
+    const signalingData = {
+      type: pc.localDescription.type,
+      sdp: pc.localDescription.sdp,
+      boxPublicKey: nacl.util.encodeBase64(localBoxKeyPair.publicKey),
+      signingPublicKey: nacl.util.encodeBase64(localSigningKeyPair.publicKey),
+      iceCandidates: localIceCandidates
+    };
+    
+    // ===== DEBUG: Show what's in the code =====
+    // Debug logging removed
+    // ========================================
+    
+    const compressed = LZString.compressToBase64(JSON.stringify(signalingData));
+    document.getElementById('signalOutput').value = compressed;
+    adjustCodeTextarea(document.getElementById('signalOutput'), compressed);
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
+async function initConnection() {
+  try {
+    // Reset ICE candidates for new connection
+    localIceCandidates = [];
+    remoteIceCandidates = [];
+    
+    // Generate both types of key pairs
+    if (!localBoxKeyPair) {
+      localBoxKeyPair = nacl.box.keyPair();
+    }
+    if (!localSigningKeyPair) {
+      localSigningKeyPair = nacl.sign.keyPair();
+    }
+    
+    pc = new RTCPeerConnection({
+      iceServers: [
+        {urls: 'stun:stun.l.google.com:19302'},
+        {urls: 'stun:stun1.l.google.com:19302'},
+        {urls: 'stun:stun2.l.google.com:19302'},
+        {urls: 'stun:stun3.l.google.com:19302'},
+        {urls: 'stun:stun4.l.google.com:19302'}
+      ]
+    });
+    
+    pc.onconnectionstatechange = () => {
+      if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected' || pc.connectionState === 'closed') {
+        handleDisconnect();
+      }
+    };
+    
+    pc.ondatachannel = (event) => {
+      setupDataChannel(event.channel);
+    };
+    
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        // Collect ICE candidate (don't log full candidate string)
+        localIceCandidates.push(event.candidate.candidate);
+        // Regenerate code to include new candidate
+        generateAndDisplaySignalingCode();
+      } else {
+        // ICE gathering complete
+      }
+    };
+    
+    // Set connection start time for timeout tracking
+    connectionStartTime = Date.now();
+    
+    return true;
+  } catch (error) {
+    setClipboardStatus('Connection failed: ' + error.message, 'error');
+    return false;
+  }
+}
+
+// Create Offer (Person A)
+document.getElementById('createOffer').onclick = async () => {
+  if (pc) {
+    setClipboardStatus('Connection already exists. Disconnect first.', 'warn');
+    return;
+  }
+  
+  if (!await initConnection()) return;
+  
+  try {
+    isInitiator = true;
+    
+    dataChannel = pc.createDataChannel('secure-chat', {
+      ordered: true
+    });
+    setupDataChannel(dataChannel);
+    
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    
+    // Generate signaling code immediately
+    generateAndDisplaySignalingCode();
+    
+    // Start connection timeout
+    connectionTimeoutId = setTimeout(() => {
+      if (pc && pc.connectionState === 'connecting') {
+        setClipboardStatus('Connection timeout: peer did not respond. Try again.', 'error');
+        handleDisconnect();
+      }
+    }, CONNECTION_TIMEOUT);
+    
+    updateStatus('⏳ Waiting for Peer...', 'connecting');
+    RateLimiter.reset();
+    
+  } catch (error) {
+    setClipboardStatus('Failed to create offer: ' + error.message, 'error');
+  }
+};
+
+// Create Answer (Person B)
+document.getElementById('createAnswer').onclick = async () => {
+  if (pc) {
+    setClipboardStatus('Connection already exists. Disconnect first.', 'warn');
+    return;
+  }
+  
+  const code = document.getElementById('signalInput').value.trim();
+  if (!code) {
+    setClipboardStatus('Paste the offer code first!', 'warn');
+    return;
+  }
+  
+  // Validate signaling code
+  const signalingData = MessageValidator.validateSignalingCode(code);
+  if (!signalingData) {
+    setClipboardStatus('Invalid code format. Check browser console for details.', 'error');
+    return;
+  }
+  
+  // Extract remote public keys
+  if (!signalingData.boxPublicKey) {
+    setClipboardStatus('Code missing encryption key. Please get a fresh code from the other person.', 'error');
+    return;
+  }
+  if (!signalingData.signingPublicKey) {
+    setClipboardStatus('Code missing signing key. Please get a fresh code from the other person.', 'error');
+    return;
+  }
+  
+  try {
+    remoteBoxPublicKey = nacl.util.decodeBase64(signalingData.boxPublicKey);
+  } catch (e) {
+    setClipboardStatus('Invalid encryption key in code. Try again.', 'error');
+    return;
+  }
+  
+  try {
+    remoteSigningPublicKey = nacl.util.decodeBase64(signalingData.signingPublicKey);
+  } catch (e) {
+    setClipboardStatus('Invalid signing key in code. Try again.', 'error');
+    return;
+  }
+  
+  if (!await initConnection()) return;
+  
+  try {
+    isInitiator = false;
+    
+    // Use plain object, not deprecated RTCSessionDescription
+    await pc.setRemoteDescription({
+      type: signalingData.type,
+      sdp: signalingData.sdp
+    });
+    
+    // Add remote ICE candidates from offer
+    if (signalingData.iceCandidates && Array.isArray(signalingData.iceCandidates)) {
+      for (const candidateStr of signalingData.iceCandidates) {
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate({
+            candidate: candidateStr,
+            sdpMLineIndex: 0
+          }));
+        } catch (e) {
+        }
+      }
+    }
+    
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    
+    // Generate signaling code immediately
+    generateAndDisplaySignalingCode();
+    
+    // Start connection timeout
+    connectionTimeoutId = setTimeout(() => {
+      if (pc && pc.connectionState === 'connecting') {
+        setClipboardStatus('Connection timeout: peer did not respond. Try again.', 'error');
+        handleDisconnect();
+      }
+    }, CONNECTION_TIMEOUT);
+    
+    updateStatus('🔄 Connecting...', 'connecting');
+    RateLimiter.reset();
+    
+  } catch (error) {
+    setClipboardStatus('Connection error: ' + error.message, 'error');
+  }
+};
+
+// Process answer (for Person A)
+document.getElementById('signalInput').addEventListener('change', async () => {
+  if (!pc || !isInitiator || pc.remoteDescription) {
+    return;
+  }
+  
+  const code = document.getElementById('signalInput').value.trim();
+  if (!code) {
+    return;
+  }
+  
+  const signalingData = MessageValidator.validateSignalingCode(code);
+  if (!signalingData) {
+    return;
+  }
+  
+  // Extract remote public keys if provided
+  if (signalingData.boxPublicKey) {
+    try {
+      remoteBoxPublicKey = nacl.util.decodeBase64(signalingData.boxPublicKey);
+    } catch (e) {
+      return;
+    }
+  } else {
+    return;
+  }
+  
+  if (signalingData.signingPublicKey) {
+    try {
+      remoteSigningPublicKey = nacl.util.decodeBase64(signalingData.signingPublicKey);
+    } catch (e) {
+      return;
+    }
+  } else {
+    return;
+  }
+  
+  try {
+    // Use plain object
+    await pc.setRemoteDescription({
+      type: signalingData.type,
+      sdp: signalingData.sdp
+    });
+    
+    // Add remote ICE candidates from answer
+    if (signalingData.iceCandidates && Array.isArray(signalingData.iceCandidates)) {
+      for (const candidateStr of signalingData.iceCandidates) {
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate({
+            candidate: candidateStr,
+            sdpMLineIndex: 0
+          }));
+        } catch (e) {
+        }
+      }
+    }
+    
+    updateStatus('🔒 Connected - Encrypted', 'encrypted');
+    
+    // Clear timeout since connection is established
+    if (connectionTimeoutId) {
+      clearTimeout(connectionTimeoutId);
+      connectionTimeoutId = null;
+    }
+    
+  } catch (error) {
+    setClipboardStatus('Connection error: ' + error.message, 'error');
+  }
+});
+
+// Send message
+function sendMessage() {
+  // Rate limiting check
+  if (!RateLimiter.canSend()) {
+    addMessage('⚠️ [Message rate limited - max 10/second]', 'local', false);
+    return;
+  }
+  
+  const rawText = messageInput.value.trim();
+  if (!rawText) return;
+  
+  // Sanitize input
+  const text = MessageValidator.sanitizeInput(rawText);
+  
+  if (!dataChannel || dataChannel.readyState !== 'open') {
+    setClipboardStatus('Not connected', 'warn');
+    return;
+  }
+  
+  if (!remoteBoxPublicKey) {
+    setClipboardStatus('Encryption not initialized - remote box key missing', 'error');
+    return;
+  }
+  
+  if (!remoteSigningPublicKey) {
+    setClipboardStatus('Encryption not initialized - remote signing key missing', 'error');
+    return;
+  }
+  
+  if (!localBoxKeyPair) {
+    setClipboardStatus('Encryption not initialized - local box key pair missing', 'error');
+    return;
+  }
+  
+  if (!localSigningKeyPair) {
+    setClipboardStatus('Encryption not initialized - local signing key pair missing', 'error');
+    return;
+  }
+  
+  if (!window.nacl) {
+    setClipboardStatus('Crypto library not available', 'error');
+    return;
+  }
+  
+  try {
+    
+    // Encrypt message
+    let nonce;
+    try {
+      nonce = Crypto.generateNonce();
+    } catch (e) {
+      throw new Error(`Nonce generation failed: ${e.message}`);
+    }
+    
+    let encrypted;
+    try {
+      encrypted = Crypto.encrypt(
+        text,
+        nonce,
+        remoteBoxPublicKey,
+        localBoxKeyPair.secretKey
+      );
+    } catch (e) {
+      throw new Error(`Encryption failed: ${e.message}`);
+    }
+    
+    // Sign message
+    let signature;
+    try {
+      signature = Crypto.sign(text, localSigningKeyPair.secretKey);
+    } catch (e) {
+      throw new Error(`Signing failed: ${e.message}`);
+    }
+    
+    // Send encrypted message
+    const messageData = {
+      ciphertext: encrypted.ciphertext,
+      nonce: encrypted.nonce,
+      signature: signature,
+      timestamp: Date.now()
+    };
+    
+    const jsonStr = JSON.stringify(messageData);
+    
+    dataChannel.send(jsonStr);
+    
+    addMessage(text, 'local', true);
+    messageInput.value = '';
+    messageInput.focus();
+    
+  } catch (error) {
+    setClipboardStatus('Failed to send message: ' + error.message, 'error');
+  }
+}
+
+sendBtn.onclick = sendMessage;
+messageInput.onkeypress = (e) => {
+  if (e.key === 'Enter') sendMessage();
+};
+
+document.getElementById('refreshPage').onclick = () => {
+  window.location.reload();
+};
+
+// Copy signal code
+document.getElementById('copySignal').onclick = async () => {
+  const code = document.getElementById('signalOutput').value;
+  if (!code) {
+    setClipboardStatus('Create a connection first.', 'warn');
+    return;
+  }
+  await navigator.clipboard.writeText(code);
+  setClipboardStatus('Code copied to clipboard.', 'ok');
+};
+
+const signalInputEl = document.getElementById('signalInput');
+signalInputEl.addEventListener('input', () => adjustCodeTextarea(signalInputEl));
+
+const pasteSignalBtn = document.getElementById('pasteSignal');
+if (!navigator.clipboard || !navigator.clipboard.readText) {
+  pasteSignalBtn.disabled = true;
+  pasteSignalBtn.title = 'Paste not supported by this browser';
+  setClipboardStatus('Paste not supported by this browser.', 'warn');
+} else {
+  pasteSignalBtn.onclick = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (!text) {
+        setClipboardStatus('Clipboard is empty.', 'warn');
+        return;
+      }
+      signalInputEl.value = text.trim();
+      adjustCodeTextarea(signalInputEl, signalInputEl.value);
+      signalInputEl.dispatchEvent(new Event('change'));
+      setClipboardStatus('Code pasted.', 'ok');
+    } catch (error) {
+      setClipboardStatus('Paste failed: ' + error.message, 'error');
+    }
+  };
+}
+
+// Disconnect function
+function handleDisconnect() {
+  if (isDisconnecting) return;
+  isDisconnecting = true;
+  
+  // Clear connection timeout
+  if (connectionTimeoutId) {
+    clearTimeout(connectionTimeoutId);
+    connectionTimeoutId = null;
+  }
+  
+  if (pc) {
+    pc.close();
+    pc = null;
+  }
+  if (dataChannel) {
+    dataChannel.close();
+    dataChannel = null;
+  }
+  
+  // Clear secrets from memory
+  localBoxKeyPair = null;
+  localSigningKeyPair = null;
+  remoteBoxPublicKey = null;
+  remoteSigningPublicKey = null;
+  localIceCandidates = [];
+  remoteIceCandidates = [];
+  RateLimiter.reset();
+  
+  updateStatus('❌ Disconnected', 'disconnected');
+  disableChat();
+  document.getElementById('signalOutput').value = '';
+  document.getElementById('signalInput').value = '';
+  adjustCodeTextarea(document.getElementById('signalOutput'), '');
+  adjustCodeTextarea(document.getElementById('signalInput'), '');
+  document.getElementById('disconnect').disabled = true;
+  document.getElementById('createOffer').disabled = false;
+  document.getElementById('createAnswer').disabled = false;
+  
+  // Clear message history (NOT stored persistently for security)
+  messagesEl.innerHTML = '';
+  isInitiator = false;
+  
+  isDisconnecting = false;
+}
+
+// Disconnect button handlers
+document.getElementById('disconnect').onclick = handleDisconnect;
+
+// Cleanup on unload
+window.addEventListener('beforeunload', () => {
+  if (pc) pc.close();
+  if (dataChannel) dataChannel.close();
+  localBoxKeyPair = null;
+  localSigningKeyPair = null;
+  remoteBoxPublicKey = null;
+  remoteSigningPublicKey = null;
+});
+</script>
+</body>
+</html>
